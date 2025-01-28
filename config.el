@@ -130,6 +130,12 @@
 
 (add-hook 'c-mode-hook 'my-d-mode-hook)
 
+(add-hook! 'c-mode-common-hook
+  (setq c-basic-offset 4
+        tab-width 4
+        indent-tabs-mode nil))
+
+
 (after! lsp-clangd
   (setq lsp-clients-clangd-args
         '("-j=3"
@@ -140,33 +146,204 @@
           "--header-insertion-decorators=0"))
   (set-lsp-priority! 'clangd 2))
 
-(add-hook 'c-mode-hook
-          (lambda ()
-            (setq comment-start "// "
-                  comment-end "")))
+(setq org-directory "/mnt/c/org/")
+
+(require 'org-id)
+(require 'time-stamp)
+(defun add-comment-with-id (prefix &optional context)
+  "Add a prefixed comment with a unique ID and optional context, and record it in Org mode."
+  (let* ((comment-start "// ") ;; Explicitly set the comment style for C
+         (content (or context (read-string (concat prefix ": "))))
+         (id (org-id-new))
+         (timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+         (source-file (or (buffer-file-name) "unknown"))
+         (source-file-name (file-name-nondirectory source-file))
+         (tag (format "@(dleiferives,%s): " id))
+         (raw-comment-string (concat prefix " " tag content " ~#"))
+         (org-file (expand-file-name "todos.org" org-directory))
+         (comment-start-length (length comment-start)))
+    ;; Insert the formatted comment in the source file based on code indentation
+    (save-excursion
+      (let ((indentation (save-excursion
+                           (beginning-of-line)
+                           (current-indentation))))
+        (beginning-of-line)
+        (open-line 1)
+        (let* ((available-width (- fill-column comment-start-length indentation -2))
+               (formatted-text (with-temp-buffer
+                                 (insert raw-comment-string)
+                                 (let ((fill-column available-width))
+                                   (fill-region (point-min) (point-max)))
+                                 (buffer-string)))
+               (lines (delete-dups (split-string formatted-text "\n")))
+               (first-line t))
+          (while lines
+            (let ((line (car lines)))
+              (insert (make-string indentation ? ))
+              (insert comment-start)
+              (if first-line
+                  (insert line)
+                (insert (string-trim-left line)))
+              (when (cdr lines)  ; Only add newline if not last line
+                (newline))
+              (setq lines (cdr lines)
+                    first-line nil))))))
+    ;; Add a corresponding TODO in the Org file
+    (with-current-buffer (find-file-noselect org-file)
+      (goto-char (point-max))
+      (insert (format "\n* TODO %s\n  :PROPERTIES:\n  :ID:       %s\n  :TAG:      %s\n  :CREATED:  %s\n  :END:\n  [[file:%s][%s]]\n  %s"
+                      content
+                      id
+                      tag
+                      timestamp
+                      source-file
+                      source-file-name
+                      content))
+      (save-buffer))))
+
+
+
+(defun find-todo-in-org ()
+  "Find the corresponding TODO entry in Org mode from the current comment."
+  (interactive)
+  (let* ((line (thing-at-point 'line t))
+         (id (and (string-match "@(dleiferives,\\([^)]*\\)):" line)
+                  (match-string 1 line)))
+         (org-file (expand-file-name "todos.org" org-directory)))
+    (if id
+        (progn
+          (find-file org-file)
+          (goto-char (point-min))
+          (if (re-search-forward (format ":ID:       %s" id) nil t)
+              (org-show-entry)
+            (message "TODO entry not found for ID: %s" id)))
+      (message "No valid ID found in the current comment."))))
+
+(defun mark-todo-as-done-and-remove-comment ()
+  "Mark the corresponding TODO in Org as done and remove the source comment block."
+  (interactive)
+  (let* ((line (thing-at-point 'line t))
+         (id (and (string-match "@(dleiferives,\\([^)]*\\)):" line)
+                  (match-string 1 line)))
+         (org-file (expand-file-name "todos.org" org-directory)))
+    (if id
+        (progn
+          ;; Locate and remove the exact comment block
+          (save-excursion
+            (beginning-of-line)
+            (let ((start nil)
+                  (end nil))
+              ;; Find the start of the comment block
+              (while (and (not start) (not (bobp)))
+                (if (string-match (concat "@(dleiferives," id "):") (thing-at-point 'line t))
+                    (setq start (point))
+                  (forward-line -1)))
+              (when start
+                (goto-char start)
+                ;; Find the end of the comment block
+                (while (and (not end) (not (eobp)))
+                  (if (string-match "~#$" (thing-at-point 'line t))
+                      (setq end (line-end-position))
+                    (forward-line 1)))
+                ;; Remove the comment block
+                (when end
+                  (delete-region start (1+ end))
+                  (message "Comment block removed.")))))
+          ;; Mark TODO as DONE in Org mode
+          (with-current-buffer (find-file-noselect org-file)
+            (goto-char (point-min))
+            (if (re-search-forward (format ":ID:       %s" id) nil t)
+                (progn
+                  (org-todo 'done)
+                  (org-set-property "COMPLETED" (format-time-string "%Y-%m-%d %H:%M:%S"))
+                  (save-buffer)
+                  (message "Marked as done and removed associated comment block."))
+              (message "TODO entry not found in Org file for ID: %s" id))))
+      (message "No valid ID found in the current comment."))))
+
+(defun update-org-entry-from-comment (id new-content)
+  "Update an existing Org entry identified by ID with NEW-CONTENT."
+  (let ((org-file (expand-file-name "todos.org" org-directory)))
+    (with-current-buffer (find-file-noselect org-file)
+      (goto-char (point-min))
+      (if (re-search-forward (format ":ID:       %s" id) nil t)
+          (progn
+            (org-entry-put (point) "ITEM" new-content)
+            (save-buffer))
+        (message "No matching Org entry found for ID: %s" id)))))
+
+
+
+
+
+(defun add-todo-comment () (interactive) (add-comment-with-id "TODO"))
+(defun add-note-comment () (interactive) (add-comment-with-id "NOTE"))
+(defun add-warn-comment () (interactive) (add-comment-with-id "WARN"))
+(defun add-question-comment () (interactive) (add-comment-with-id "QUESTION"))
+(defun add-answer-comment () (interactive) (add-comment-with-id "ANSWER"))
+(defun add-idea-comment () (interactive) (add-comment-with-id "IDEA"))
+
 (map! :leader
       (:prefix ("l" . "custom comments")
        :desc "Add TODO comment" "t" #'add-todo-comment
        :desc "Add NOTE comment" "n" #'add-note-comment
-       :desc "Add WARN comment" "w" #'add-warn-comment))
+       :desc "Add WARN comment" "w" #'add-warn-comment
+       :desc "Add QUESTION comment" "q" #'add-question-comment
+       :desc "Add ANSWER comment" "a" #'add-answer-comment
+       :desc "Add IDEA comment" "i" #'add-idea-comment
+       :desc "Find TODO in Org" "l" #'find-todo-in-org
+       :desc "Mark as DONE and remove comment" "d" #'mark-todo-as-done-and-remove-comment
+       :desc "Update Org entry" "u" #'update-org-entry-from-comment))
 
-(defun add-comment (prefix)
-  (let* ((comment-start (or comment-start "# "))
-         (content (read-string (concat prefix ": ")))
-         (comment-string (concat comment-start prefix " @(dleiferives): " content)))
-    (save-excursion
-      (beginning-of-line)
-      (open-line 1)
-      (insert comment-string))))
+(require 'dap-cpptools)
 
-(defun add-todo-comment ()
-  (interactive)
-  (add-comment "TODO"))
+(setq doom-font (font-spec :family "CodeNewRoman Nerd Font Mono"))
 
-(defun add-note-comment ()
-  (interactive)
-  (add-comment "NOTE"))
+(use-package! eaf
+  :load-path "~/.config/doom/emacs-application-framework"
+  :init
+  :custom
+  (eaf-browser-continue-where-left-off t)
+  (eaf-browser-enable-adblocker t)
+  (browse-url-browser-function 'eaf-open-browser) ;; Make EAF Browser my default browser
+  :config
+  (defalias 'browse-web #'eaf-open-browser)
 
-(defun add-warn-comment ()
-  (interactive)
-  (add-comment "WARN"))
+  (require 'eaf-file-manager)
+  (require 'eaf-music-player)
+  (require 'eaf-image-viewer)
+  (require 'eaf-camera)
+  (require 'eaf-demo)
+  (require 'eaf-airshare)
+  (require 'eaf-terminal)
+  (require 'eaf-markdown-previewer)
+  (require 'eaf-video-player)
+  (require 'eaf-vue-demo)
+  (require 'eaf-file-sender)
+  (require 'eaf-pdf-viewer)
+  (require 'eaf-mindmap)
+  (require 'eaf-netease-cloud-music)
+  (require 'eaf-jupyter)
+  (require 'eaf-org-previewer)
+  (require 'eaf-system-monitor)
+  (require 'eaf-rss-reader)
+  (require 'eaf-file-browser)
+  (require 'eaf-browser)
+  (require 'eaf-org)
+  (require 'eaf-mail)
+  (require 'eaf-git)
+  (when (display-graphic-p)
+    (require 'eaf-all-the-icons))
+
+  (require 'eaf-evil)
+  (define-key key-translation-map (kbd "SPC")
+    (lambda (prompt)
+      (if (derived-mode-p 'eaf-mode)
+          (pcase eaf--buffer-app-name
+            ("browser" (if  (string= (eaf-call-sync "call_function" eaf--buffer-id "is_focus") "True")
+                           (kbd "SPC")
+                         (kbd eaf-evil-leader-key)))
+            ("pdf-viewer" (kbd eaf-evil-leader-key))
+            ("image-viewer" (kbd eaf-evil-leader-key))
+            (_  (kbd "SPC")))
+        (kbd "SPC")))))
