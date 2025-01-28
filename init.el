@@ -193,3 +193,19 @@
        :config
        ;;literate
        (default +bindings +smartparens))
+
+
+
+
+
+
+; Eaf demo worked but the rest of qt did not this is because gpu rendering is 
+; not setup to work as im using wsl at the moment. will not make this work.
+; untill I move to linux full time.
+;(add-to-list 'load-path "~/.config/doom/emacs-application-framework")
+;(add-to-list 'load-path "~/.config/doom/emacs-application-framework/app/demo")
+;(add-to-list 'load-path "~/.config/doom/emacs-application-framework/app/eaf-browser")
+;(setq eaf-enable-debug t)
+;(require 'eaf)
+;(require 'eaf-demo)
+;(require 'eaf-browser)
