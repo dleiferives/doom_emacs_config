@@ -283,19 +283,141 @@
 (defun add-answer-comment () (interactive) (add-comment-with-id "ANSWER"))
 (defun add-idea-comment () (interactive) (add-comment-with-id "IDEA"))
 
+(defun my-org-insert-todo-with-id ()
+  "Insert a new TODO entry with a unique ID, timestamp, and properties.
+   If not under a heading, create a new heading. Otherwise, add as a subheading."
+  (interactive)
+  (let* ((id (org-id-new))
+         (timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+         (content (read-string "TODO: "))
+         (tag (format "@(dleiferives,%s): " id)))
+    (if (org-before-first-heading-p)
+        (progn
+          (org-insert-heading)
+          (org-todo "TODO"))
+      (org-insert-heading-respect-content)
+      (org-do-demote)
+      (org-todo "TODO"))
+    (insert " " content)
+    (org-end-of-subtree)
+    (insert "\n:PROPERTIES:\n:ID:       " id
+            "\n:TAG:      " tag
+            "\n:CREATED:  " timestamp
+            "\n:END:\n")
+    (org-back-to-heading)
+    (org-id-get-create)
+    (org-end-of-subtree)))
+
+
+
+(defun choose-todo-function ()
+  "Choose between my-org-insert-todo-with-id and add-todo-comment based on major mode."
+  (interactive)
+  (if (eq major-mode 'org-mode)
+      (my-org-insert-todo-with-id)
+    (add-todo-comment)))
+
+(defun choose-note-function ()
+  "Choose between my-org-insert-todo-with-id and add-note-comment based on major mode."
+  (interactive)
+  (if (eq major-mode 'org-mode)
+      (my-org-insert-todo-with-id)
+    (add-note-comment)))
+
+(defun choose-warn-function ()
+  "Choose between my-org-insert-todo-with-id and add-warn-comment based on major mode."
+  (interactive)
+  (if (eq major-mode 'org-mode)
+      (my-org-insert-todo-with-id)
+    (add-warn-comment)))
+
+(defun choose-question-function ()
+  "Choose between my-org-insert-todo-with-id and add-question-comment based on major mode."
+  (interactive)
+  (if (eq major-mode 'org-mode)
+      (my-org-insert-todo-with-id)
+    (add-question-comment)))
+
+(defun choose-answer-function ()
+  "Choose between my-org-insert-todo-with-id and add-answer-comment based on major mode."
+  (interactive)
+  (if (eq major-mode 'org-mode)
+      (my-org-insert-todo-with-id)
+    (add-answer-comment)))
+
+(defun choose-idea-function ()
+  "Choose between my-org-insert-todo-with-id and add-idea-comment based on major mode."
+  (interactive)
+  (if (eq major-mode 'org-mode)
+      (my-org-insert-todo-with-id)
+    (add-idea-comment)))
+
 (map! :leader
       (:prefix ("l" . "custom comments")
-       :desc "Add TODO comment" "t" #'add-todo-comment
-       :desc "Add NOTE comment" "n" #'add-note-comment
-       :desc "Add WARN comment" "w" #'add-warn-comment
-       :desc "Add QUESTION comment" "q" #'add-question-comment
-       :desc "Add ANSWER comment" "a" #'add-answer-comment
-       :desc "Add IDEA comment" "i" #'add-idea-comment
+       :desc "Add TODO entry/comment" "t" #'choose-todo-function
+       :desc "Add NOTE entry/comment" "n" #'choose-note-function
+       :desc "Add WARN entry/comment" "w" #'choose-warn-function
+       :desc "Add QUESTION entry/comment" "q" #'choose-question-function
+       :desc "Add ANSWER entry/comment" "a" #'choose-answer-function
+       :desc "Add IDEA entry/comment" "i" #'choose-idea-function
        :desc "Find TODO in Org" "l" #'find-todo-in-org
        :desc "Mark as DONE and remove comment" "d" #'mark-todo-as-done-and-remove-comment
        :desc "Update Org entry" "u" #'update-org-entry-from-comment))
+
+
+
 
 (require 'dap-cpptools)
 
 (setq doom-font (font-spec :family "CodeNewRoman Nerd Font Mono"))
 
+
+
+(after! org (setq org-todo-keywords
+      '((sequence "TODO(t)" "PROJ(p)" "LOOP(r)" "STRT(s)"  "HOLD(h)" "IDEA(i)" "|" "DONE(d)" "WONTDO(w)" "KILL(k)")
+        (sequence "[ ](T)" "[-](S)" "[?](W)" "|" "[X](D)")
+        (sequence "|" "OKAY(o)" "YES(y)" "NO(n)")
+        (sequence "QUESTION(q)" "ANSWER(a)"))))
+
+;;Store the original frame-title-format
+(defvar original-frame-title-format frame-title-format)
+
+(defun custom-frame-title-format-internals ()
+  (if (buffer-file-name)
+      (abbreviate-file-name (buffer-file-name))
+    (or (and (boundp 'treemacs--current-workspace)
+             (treemacs-workspace->name (treemacs-current-workspace)))
+        (buffer-name))))
+
+(defun custom-frame-title-format ()
+  (concat (if (listp original-frame-title-format)
+              (format-mode-line original-frame-title-format)
+            original-frame-title-format)
+          " - "
+          (custom-frame-title-format-internals)))
+
+;; Set the new frame-title-format
+(after! doom-ui (setq frame-title-format '(:eval (custom-frame-title-format))))
+
+(defun open-psi-file ()
+  "Open file matching \\psi_<SOMETHING> pattern under cursor in /mnt/c/obsidian/psi."
+  (interactive)
+  (let* ((syntax-table (make-syntax-table))
+         (word (with-syntax-table syntax-table
+                 (modify-syntax-entry ?\\ "w")
+                 (thing-at-point 'word t)))
+         (match (and word (string-match "\\\\psi_\\(.+\\)" word))))
+    (if match
+        (let* ((file-pattern (match-string 1 word))
+               (search-dir "/mnt/c/obsidian/psi")
+               (command (format "rg --files -g '*%s*' %s" file-pattern search-dir))
+               (result (shell-command-to-string command)))
+          (if (not (string-empty-p result))
+              (find-file (car (split-string result "\n" t)))
+            (message "No matching file found for %s" file-pattern)))
+      (message "No \\psi_<SOMETHING> pattern found under cursor"))))
+
+
+(map! :leader
+      :desc "Open psi file under cursor"
+      "o p" #'open-psi-file)
