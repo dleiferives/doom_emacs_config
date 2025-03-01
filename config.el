@@ -40,7 +40,6 @@
 
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
-(setq org-directory "~/org/")
 
 
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
@@ -146,62 +145,123 @@
           "--header-insertion-decorators=0"))
   (set-lsp-priority! 'clangd 2))
 
-(setq org-directory "/mnt/c/org/")
+(setq org-directory "/mnt/c/sync/org-iphone")
+(setq org-log-done 'note)
+
+(defun projectile-skel-dir-locals ()
+  "Insert a .dir-locals.el template."
+  (interactive)
+  (skeleton-insert
+   '(nil "((nil . ("
+         (""
+          '(projectile-skel-variable-cons)
+          n)
+         resume: ")))")))
 
 (require 'org-id)
 (require 'time-stamp)
+
+;; Customize the comment markers for different modes.
+(defvar my-comment-markers
+  '((c-mode . "// ")
+    (c++-mode . "// ")
+    (python-mode . "## ")
+    (emacs-lisp-mode . ";; "))
+  "Mapping from major mode to a two-character comment marker.
+Add more entries here to support additional languages.")
+
+(defun my-get-comment-marker ()
+  "Return the proper comment marker based on the current `major-mode'.
+Falls back to the default `comment-start' if no match is found."
+  (or (cdr (assoc major-mode my-comment-markers))
+      comment-start))
+
+(defun my-get-org-file ()
+  "Return the Org file to write the TODO entries to.
+The file is placed in the \"auto/\" subdirectory of `org-directory` and is
+named using the Projectile project name if available; otherwise, it defaults
+to \"todos.org\"."
+  (let ((proj (if (and (fboundp 'projectile-project-name)
+                       (projectile-project-name))
+                  (projectile-project-name)
+                "todos")))
+    (expand-file-name (format "auto/%s.org" proj) org-directory)))
+
+;; Helper: Create the base tag for the PROPERTIES block.
+(defun my-construct-base-tag (id)
+  "Construct the base tag for the Org entry properties.
+It encodes the unique ID in the form \"@(dleiferives,ID):\"."
+  (format "@(dleiferives,%s):" id))
+
+;; Helper: Create the project tag for the headline.
+(defun my-headline-project-tag ()
+  "Return the project tag string to be appended to the headline if available.
+If a Projectile project is detected, return a string formatted as
+\" :<projectile-project-name>:\"; otherwise return the empty string."
+  (if (and (fboundp 'projectile-project-name)
+           (projectile-project-name))
+      (format " :%s:" (projectile-project-name))
+    ""))
+
 (defun add-comment-with-id (prefix &optional context)
-  "Add a prefixed comment with a unique ID and optional context, and record it in Org mode."
-  (let* ((comment-start "// ") ;; Explicitly set the comment style for C
+  "Add a prefixed comment with a unique ID and optional CONTEXT, and record it in Org mode.
+The inserted comment uses the comment marker appropriate for the current mode.
+A corresponding TODO entry is inserted into the Org file. The internal tag used
+by the PROPERTIES block encodes the unique ID, while, if a Projectile project is active,
+its tag is appended to the TODO headline."
+  (interactive)
+  (let* ((marker (my-get-comment-marker))
          (content (or context (read-string (concat prefix ": "))))
          (id (org-id-new))
          (timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
          (source-file (or (buffer-file-name) "unknown"))
          (source-file-name (file-name-nondirectory source-file))
-         (tag (format "@(dleiferives,%s): " id))
-         (raw-comment-string (concat prefix " " tag content " ~#"))
-         (org-file (expand-file-name "todos.org" org-directory))
-         (comment-start-length (length comment-start)))
-    ;; Insert the formatted comment in the source file based on code indentation
+         ;; Build the base tag for properties and project tag for headline.
+         (base-tag (my-construct-base-tag id))
+         (proj-tag (my-headline-project-tag))
+         (raw-comment-string (concat prefix " " base-tag " " content " ~#"))
+         (org-file (my-get-org-file))
+         (marker-length (length marker)))
+    ;; Insert the formatted comment in the source file, respecting code indentation.
     (save-excursion
       (let ((indentation (save-excursion
                            (beginning-of-line)
                            (current-indentation))))
         (beginning-of-line)
         (open-line 1)
-        (let* ((available-width (- fill-column comment-start-length indentation -2))
-               (formatted-text (with-temp-buffer
-                                 (insert raw-comment-string)
-                                 (let ((fill-column available-width))
-                                   (fill-region (point-min) (point-max)))
-                                 (buffer-string)))
+        (let* ((available-width (- fill-column marker-length indentation -2))
+               (formatted-text
+                (with-temp-buffer
+                  (insert raw-comment-string)
+                  (let ((fill-column available-width))
+                    (fill-region (point-min) (point-max)))
+                  (buffer-string)))
                (lines (delete-dups (split-string formatted-text "\n")))
                (first-line t))
           (while lines
             (let ((line (car lines)))
               (insert (make-string indentation ? ))
-              (insert comment-start)
+              (insert marker)
               (if first-line
                   (insert line)
                 (insert (string-trim-left line)))
-              (when (cdr lines)  ; Only add newline if not last line
+              (when (cdr lines)  ; Only add newline if not the last line.
                 (newline))
               (setq lines (cdr lines)
                     first-line nil))))))
-    ;; Add a corresponding TODO in the Org file
+    ;; Add a corresponding TODO entry in the Org file.
     (with-current-buffer (find-file-noselect org-file)
       (goto-char (point-max))
-      (insert (format "\n* TODO %s\n  :PROPERTIES:\n  :ID:       %s\n  :TAG:      %s\n  :CREATED:  %s\n  :END:\n  [[file:%s][%s]]\n  %s"
+      (insert (format "\n* TODO %s%s\n  :PROPERTIES:\n  :ID:       %s\n  :TAG:      %s\n  :CREATED:  %s\n  :END:\n  [[file:%s][%s]]\n  %s"
                       content
+                      proj-tag
                       id
-                      tag
+                      base-tag
                       timestamp
                       source-file
                       source-file-name
                       content))
       (save-buffer))))
-
-
 
 (defun find-todo-in-org ()
   "Find the corresponding TODO entry in Org mode from the current comment."
@@ -209,7 +269,7 @@
   (let* ((line (thing-at-point 'line t))
          (id (and (string-match "@(dleiferives,\\([^)]*\\)):" line)
                   (match-string 1 line)))
-         (org-file (expand-file-name "todos.org" org-directory)))
+         (org-file (my-get-org-file)))
     (if id
         (progn
           (find-file org-file)
@@ -225,37 +285,39 @@
   (let* ((line (thing-at-point 'line t))
          (id (and (string-match "@(dleiferives,\\([^)]*\\)):" line)
                   (match-string 1 line)))
-         (org-file (expand-file-name "todos.org" org-directory)))
+         (org-file (my-get-org-file)))
     (if id
         (progn
-          ;; Locate and remove the exact comment block
+          ;; Locate and remove the exact comment block.
           (save-excursion
             (beginning-of-line)
             (let ((start nil)
                   (end nil))
-              ;; Find the start of the comment block
+              ;; Find the start of the comment block.
               (while (and (not start) (not (bobp)))
-                (if (string-match (concat "@(dleiferives," id "):") (thing-at-point 'line t))
+                (if (string-match (concat "@(dleiferives," id "):")
+                                  (thing-at-point 'line t))
                     (setq start (point))
                   (forward-line -1)))
               (when start
                 (goto-char start)
-                ;; Find the end of the comment block
+                ;; Find the end of the comment block.
                 (while (and (not end) (not (eobp)))
                   (if (string-match "~#$" (thing-at-point 'line t))
                       (setq end (line-end-position))
                     (forward-line 1)))
-                ;; Remove the comment block
+                ;; Remove the comment block.
                 (when end
                   (delete-region start (1+ end))
                   (message "Comment block removed.")))))
-          ;; Mark TODO as DONE in Org mode
+          ;; Mark TODO as DONE in Org mode.
           (with-current-buffer (find-file-noselect org-file)
             (goto-char (point-min))
             (if (re-search-forward (format ":ID:       %s" id) nil t)
                 (progn
                   (org-todo 'done)
-                  (org-set-property "COMPLETED" (format-time-string "%Y-%m-%d %H:%M:%S"))
+                  (org-set-property "COMPLETED"
+                                    (format-time-string "%Y-%m-%d %H:%M:%S"))
                   (save-buffer)
                   (message "Marked as done and removed associated comment block."))
               (message "TODO entry not found in Org file for ID: %s" id))))
@@ -263,7 +325,7 @@
 
 (defun update-org-entry-from-comment (id new-content)
   "Update an existing Org entry identified by ID with NEW-CONTENT."
-  (let ((org-file (expand-file-name "todos.org" org-directory)))
+  (let ((org-file (my-get-org-file)))
     (with-current-buffer (find-file-noselect org-file)
       (goto-char (point-min))
       (if (re-search-forward (format ":ID:       %s" id) nil t)
@@ -272,25 +334,42 @@
             (save-buffer))
         (message "No matching Org entry found for ID: %s" id)))))
 
+;; Interactive commands using `add-comment-with-id'.
+(defun add-todo-comment ()
+  (interactive)
+  (add-comment-with-id "TODO"))
 
+(defun add-note-comment ()
+  (interactive)
+  (add-comment-with-id "NOTE"))
 
+(defun add-warn-comment ()
+  (interactive)
+  (add-comment-with-id "WARN"))
 
+(defun add-question-comment ()
+  (interactive)
+  (add-comment-with-id "QUESTION"))
 
-(defun add-todo-comment () (interactive) (add-comment-with-id "TODO"))
-(defun add-note-comment () (interactive) (add-comment-with-id "NOTE"))
-(defun add-warn-comment () (interactive) (add-comment-with-id "WARN"))
-(defun add-question-comment () (interactive) (add-comment-with-id "QUESTION"))
-(defun add-answer-comment () (interactive) (add-comment-with-id "ANSWER"))
-(defun add-idea-comment () (interactive) (add-comment-with-id "IDEA"))
+(defun add-answer-comment ()
+  (interactive)
+  (add-comment-with-id "ANSWER"))
+
+(defun add-idea-comment ()
+  (interactive)
+  (add-comment-with-id "IDEA"))
 
 (defun my-org-insert-todo-with-id ()
   "Insert a new TODO entry with a unique ID, timestamp, and properties.
-   If not under a heading, create a new heading. Otherwise, add as a subheading."
+If not under a heading, create a new heading. Otherwise, add as a subheading.
+The PROPERTIES block gets the internal base tag while the headline is appended
+with the project tag if a Projectile project is active."
   (interactive)
   (let* ((id (org-id-new))
          (timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
          (content (read-string "TODO: "))
-         (tag (format "@(dleiferives,%s): " id)))
+         (base-tag (my-construct-base-tag id))
+         (proj-tag (my-headline-project-tag)))
     (if (org-before-first-heading-p)
         (progn
           (org-insert-heading)
@@ -298,11 +377,11 @@
       (org-insert-heading-respect-content)
       (org-do-demote)
       (org-todo "TODO"))
-    (insert " " content)
+    (insert " " content proj-tag)
     (org-end-of-subtree)
-    (insert "\n:PROPERTIES:\n:ID:       " id
-            "\n:TAG:      " tag
-            "\n:CREATED:  " timestamp
+    (insert "\n:PROPERTIES:\n  :ID:       " id
+            "\n  :TAG:      " base-tag
+            "\n  :CREATED:  " timestamp
             "\n:END:\n")
     (org-back-to-heading)
     (org-id-get-create)
@@ -421,3 +500,70 @@
 (map! :leader
       :desc "Open psi file under cursor"
       "o p" #'open-psi-file)
+
+(add-to-list 'auto-mode-alist '("\\.lib\\'" . text-mode))
+
+
+;; Ensure Projectile is loaded.
+(require 'projectile)
+
+;; Mark projectile-project-name as safe.
+(put 'projectile-project-name 'safe-local-variable #'stringp)
+
+(defun my/set-project-name ()
+  "Prompt for a project name and update the .dir-locals.el file in the current
+Projectile project.
+
+The prompt is \"project name:\"; spaces in the input are replaced with hyphens.
+If a .dir-locals.el file does not exist at the project root, it is created with
+the association:
+  ((nil . ((projectile-project-name . \"<user-input>\"))))
+If it exists, then an existing entry for projectile-project-name is replaced,
+or a new association is appended (inside the nil group) if needed.
+
+After updating, the new directory-local variables are applied to the current buffer."
+  (interactive)
+  (let ((project-root (projectile-project-root)))
+    (unless project-root
+      (user-error "Not in a Projectile project"))
+    (let* ((dir-locals-file (expand-file-name ".dir-locals.el" project-root))
+           (input (read-string "project name: "))
+           (new-name (replace-regexp-in-string "[ \t]+" "-" input)))
+      (if (file-exists-p dir-locals-file)
+          ;; Update existing .dir-locals.el.
+          (with-temp-buffer
+            (insert-file-contents dir-locals-file)
+            (goto-char (point-min))
+            (let ((locals (condition-case nil
+                              (read (current-buffer))
+                            (error nil))))
+              (unless (and locals (listp locals))
+                (setq locals '((nil . ()))))
+              (let ((nil-group (assoc nil locals)))
+                (if nil-group
+                    (let ((props (cdr nil-group)))
+                      (if (assoc 'projectile-project-name props)
+                          (setcdr (assoc 'projectile-project-name props) new-name)
+                        (setcdr nil-group
+                                (append props (list (cons 'projectile-project-name new-name)))))
+                      )
+                  (setq locals (append locals
+                                       (list (cons nil (list (cons 'projectile-project-name new-name)))))))
+                (with-temp-file dir-locals-file
+                  (prin1 locals (current-buffer)))
+                (message "Updated %s with project name: %s" dir-locals-file new-name)))
+        ;; Create new .dir-locals.el.
+        (with-temp-file dir-locals-file
+          (prin1 (list (cons nil (list (cons 'projectile-project-name new-name))))
+                  (current-buffer)))
+        (message "Created %s with project name: %s" dir-locals-file new-name))
+      ;; Reload directory-local variables for the current buffer if it belongs to the project.
+      (when (and buffer-file-name
+                 (string-prefix-p project-root buffer-file-name))
+        (hack-dir-local-variables-file-buffer (current-buffer)))))))
+
+;; Bind to <SPC> p h without disturbing other Projectile bindings.
+(map! :leader
+      :prefix "p"
+      :desc "Set project name"
+      "h" #'my/set-project-name)
