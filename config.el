@@ -38,9 +38,16 @@
 ;; numbers are disabled. For relative line numbers, set this to `relative'.
 (setq display-line-numbers-type t)
 
+
+;; Install Ement.
+;;(use-package! ement
+;;  :commands (ement-connect ement-list-rooms))
+;(setq ement-user-id "@dleiferives:beeper.com")
+;(setq ement-access-token "syt_ZGxlaWZlcml2ZXM_qUOQmBzLyZANahaKeglH_2YNNtl")
+;(setq ement-homeserver-usrl "https://matrix.example.com")
+
 ;; If you use `org' and don't want your org files in the default location below,
 ;; change `org-directory'. It must be set before org loads!
-(setq org-directory "~/org/")
 
 
 ;; Whenever you reconfigure a package, make sure to wrap your config in an
@@ -146,7 +153,7 @@
           "--header-insertion-decorators=0"))
   (set-lsp-priority! 'clangd 2))
 
-(setq org-directory "/mnt/c/org/")
+(setq org-directory "~/Sync/org-iphone/")
 
 (require 'org-id)
 (require 'time-stamp)
@@ -421,3 +428,163 @@
 (map! :leader
       :desc "Open psi file under cursor"
       "o p" #'open-psi-file)
+; (require 'exwm)
+; (require 'exwm-input)
+
+; (setq exwm-workspace-number 4)
+;(add-to-list 'exwm-input-prefix-keys ?\C-\;)
+;;;;;;;;(add-hook 'exwm-update-class-hook
+;;;;;;;;	  (lambda () (exwm-workspace-rename-buffer exwm-class-name)))
+
+;;;;;;;;(defvar efs/polybar-process nil "Polybar process.")
+;;;;;;;;(defun efs/kill-panel ()
+;;;;;;;;  (interactive)
+;;;;;;;;  (when efs/polybar-process
+;;;;;;;;    (ignore-errors (kill-process efs/polybar-process)))
+;;;;;;;;  (setq efs/polybar-process nil))
+;;;;;;;;(defun efs/start-panel ()
+;;;;;;;;  (interactive)
+;;;;;;;;  (efs/kill-panel)
+;;;;;;;;  (setq efs/polybar-process
+;;;;;;;;	(start-process-shell-command "polybar" nil "polybar panel")))
+;;;;;;;;(efs/start-panel)
+
+;;;;;;;;;; Implement JK escape sequence for entering a leader-key mode
+;;;;;;;;(defvar exwm-leader-mode nil
+;;;;;;;;  "Indicates whether EXWM is in leader-key mode.")
+;;;;;;;;(setq exwm-input-global-keys
+;;;;;;;;      `(([?\s-r] . exwm-reset)
+;;;;;;;;	([?\s-w] . exwm-workspace-switch)
+;;;;;;;;	([?\C-\;] . exwm-reset)
+;;;;;;;;	([?\s-&] . (lambda (cmd)
+;;;;;;;;		     (interactive (list (read-shell-command "$ ")))
+;;;;;;;;		     (start-process-shell-command cmd nil cmd)))
+;;;;;;;;	,@(mapcar (lambda (i)
+;;;;;;;;		    `(,(kbd (format "s-%d" i))
+;;;;;;;;		      . (lambda ()
+;;;;;;;;			  (interactive)
+;;;;;;;;			  (exwm-workspace-switch-create ,i))))
+;;;;;;;;		  (number-sequence 0 9))))
+
+
+;;;;;;;;(defun exwm-leader-key-dispatch ()
+;;;;;;;;  "Handles leader-key sequences when in leader mode."
+;;;;;;;;  (interactive)
+;;;;;;;;    (let ((key (read-key-sequence "Leader key: ")))
+;;;;;;;;      (setq exwm-leader-mode nil)
+;;;;;;;;      (exwm-input-grab-keyboard)
+;;;;;;;;      (let ((command (key-binding key)))
+;;;;;;;;	(when command
+;;;;;;;;	  (call-interactively command)))))
+
+;;;;;;;;;; Bind "jk" escape sequence in X windows
+;;;;;;;;(add-hook 'exwm-mode-hook
+;;;;;;;;	  (lambda ()
+;;;;;;;;	    (define-key exwm-mode-map (kbd "SPC") #'exwm-leader-key-dispatch)
+;;;;;;;;	    )) ;; Exit leader mode with C-g
+
+
+;;;;;;;;(defun my-update-librewolf-buffer-name ()
+;;;;;;;;  "Rename LibreWolf EXWM buffers to include the tab title when only one tab is open."
+;;;;;;;;  (when (string= exwm-class-name "LibreWolf")
+;;;;;;;;    (exwm-workspace-rename-buffer
+;;;;;;;;     (if (string= exwm-title "LibreWolf")
+;;;;;;;;	 "LibreWolf"  ; multiple tabs: use default name
+;;;;;;;;       exwm-title)))) ; single tab: include the tab’s title
+
+;;;;;;;;(add-hook 'exwm-update-title-hook #'my-update-librewolf-buffer-name)
+
+
+
+;;;;;;;;(exwm-input-set-key (kbd "<XF86AudioLowerVolume>")
+;;;;;;;;		(lambda () (interactive) (shell-command "amixer set Master 5%-")))
+;;;;;;;;(exwm-input-set-key (kbd "<XF86AudioRaiseVolume>")
+;;;;;;;;		(lambda () (interactive) (shell-command "amixer set Master 5%+")))
+;;;;;;;;(exwm-input-set-key (kbd "<XF86AudioMute>")
+;;;;;;;;		(lambda () (interactive) (shell-command "amixer set Master 1+ toggle")))
+
+;;;;;;;;(exwm-input-set-key (kbd "<XF86MonBrightnessDown>") (lambda () (interactive) (shell-command "light -U 5; light")))
+;;;;;;;;(exwm-input-set-key (kbd "<XF86MonBrightnessUp>") (lambda () (interactive) (shell-command "light -A 5; light")))
+
+
+;;;;;;;;;; Enable EXWM
+;;;;;;;;;(exwm-enable)
+
+
+;;;;;;;;(map! :leader
+;;;;;;;;      (:prefix ("s" . "search")
+;;;;;;;;       :desc "Web search in LibreWolf" "w" #'my-search-clipboard-perplexity))
+
+;;;;;;;;(defun my-web-search ()
+;;;;;;;;  "Prompt for a search query and open it in LibreWolf using DuckDuckGo in an existing split."
+;;;;;;;;  (interactive)
+;;;;;;;;  (let ((query (read-string "Search: ")))
+;;;;;;;;    (when query
+;;;;;;;;      ;; Get the current window and the other window
+;;;;;;;;      (let ((current-window (selected-window))
+;;;;;;;;	    (other-window (next-window)))
+;;;;;;;;	;; Switch to the other window if it exists
+;;;;;;;;	(if (not (eq current-window other-window))
+;;;;;;;;	    (select-window other-window))
+;;;;;;;;	;; Open LibreWolf with the search query
+;;;;;;;;	(shell-command
+;;;;;;;;	 (concat "librewolf --new-window https://duckduckgo.com/?q="
+;;;;;;;;		 (url-encode-url query)))))))
+
+;;;;;;;;(defun my-search-clipboard-perplexity ()
+;;;;;;;;  "Search Perplexity with clipboard content in a new LibreWolf window in another split."
+;;;;;;;;  (interactive)
+;;;;;;;;  (let ((query (current-kill 0))) ; Get clipboard content
+;;;;;;;;    (when query
+;;;;;;;;      ;; Get the current and other window
+;;;;;;;;      (let ((current-window (selected-window))
+;;;;;;;;	    (other-window (next-window)))
+;;;;;;;;	;; Switch to other window or split if needed
+;;;;;;;;	(if (eq current-window other-window)
+;;;;;;;;	    (split-window-right))
+;;;;;;;;	(other-window 1)
+;;;;;;;;	;; Open LibreWolf with the search query
+;;;;;;;;	(let ((escaped-query (shell-quote-argument (url-encode-url query))))
+;;;;;;;;	  (shell-command
+;;;;;;;;	   (concat "librewolf --new-window https://www.perplexity.ai/search?q=" escaped-query)))))))
+
+;;;;;;;;(map! :leader
+;;;;;;;;      (:prefix ("s" . "search")
+;;;;;;;;       :desc "Open online" "o" #'my-search-online))
+
+;;;;;;;;(defun my-search-online ()
+;;;;;;;;  "Search online using the last used search engine, opening in an existing split."
+;;;;;;;;  (interactive)
+;;;;;;;;  (let ((current-window (selected-window))
+;;;;;;;;	(other-window (next-window)))
+;;;;;;;;    ;; Switch to the other window if it exists
+;;;;;;;;    (if (not (eq current-window other-window))
+;;;;;;;;	(select-window other-window))
+;;;;;;;;    ;; Call the original Doom Emacs search online function
+;;;;;;;;    (call-interactively #'+lookup/online)))
+;; (after! exwm
+;;   ;; Define a function to check if the current buffer is LibreWolf
+;;   (defun my-exwm-is-librewolf ()
+;;     "Check if the current EXWM buffer belongs to LibreWolf."
+;;     (and exwm-class-name
+;;          (string-match-p (regexp-quote "librewolf")
+;;                          (downcase exwm-class-name))))
+
+;;   ;; Define a function to send Alt+KEY to the current EXWM buffer
+;;   (defun my-exwm-send-alt-key (key)
+;;     "Send Alt+KEY to the current EXWM buffer."
+;;     (exwm-input--fake-key (xcb:keysyms:keycode->keysym exwm--connection
+;;                                                        (xcb:keysyms:get-keycode exwm--connection key)
+;;                                                        xcb:Mod1Mask)))
+
+;;   ;; Set up global keybindings for forwarding keys in LibreWolf
+;;   (exwm-input-set-key (kbd "f")
+;;                       (lambda ()
+;;                         (interactive)
+;;                         (when (my-exwm-is-librewolf)
+;;                           (my-exwm-send-alt-key 'j))))
+;;   (exwm-input-set-key (kbd "F")
+;;                       (lambda ()
+;;                         (interactive)
+;;                         (when (my-exwm-is-librewolf)
+;;                           (my-exwm-send-alt-key 'k)))))
